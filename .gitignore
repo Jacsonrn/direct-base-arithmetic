@@ -1,0 +1,7 @@
+# Arquivos de documentação e planejamento
+projeto_U1.pdf
+Plano do Projeto U1.txt
+
+# Arquivos gerados automaticamente pelo Python
+__pycache__/
+*.pyc
