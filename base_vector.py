@@ -37,69 +37,67 @@ class CharMapper:
 
 class FloatVector:
     """
-    Estrutura vetorial customizada que simula um registrador para armazenar 
-    números reais em uma base arbitrária B >= 2.
-    NÃO utiliza int ou float para representar a grandeza completa do número.
+    Estrutura vetorial customizada que simula um registrador contínuo.
+    Armazena o número como um único vetor de dígitos isolados e 
+    utiliza um ponteiro para a posição da vírgula (radix point).
     """
     def __init__(self, base: int, sign: str = '+'):
         if base < 2 or base > 36:
             raise ValueError("A base deve estar entre 2 e 36.")
         
         self.base = base
-        self.sign = sign  # '+' ou '-'
+        self.sign = sign
         
-        # Vetores de dígitos (strings de tamanho 1) simulando posições de memória
-        self.integer_part = []     # Ex: ['1', 'A', '3']
-        self.fractional_part = []  # Ex: ['F', '2']
+        # O Registrador: Um único vetor contínuo de caracteres
+        # Ex: Para 12.5 -> digits = ['1', '2', '5']
+        self.digits = [] 
+        
+        # Posição da vírgula (índice no vetor onde termina a parte inteira)
+        # Ex: Para 12.5 -> comma_position = 2 (a vírgula está após o 2º dígito)
+        self.comma_position = 0 
         
         self.mapper = CharMapper()
 
     def from_string(self, number_str: str):
-        """
-        Popula a estrutura vetorial interpretando uma string do número.
-        Isola as partes e valida estritamente contra a base selecionada.
-        """
+        """Popula a estrutura em um vetor contínuo, anotando a posição da vírgula."""
         number_str = number_str.strip().upper()
         if not number_str:
             raise ValueError("String vazia fornecida.")
 
-        # Tratamento de sinal
         if number_str[0] in ['+', '-']:
             self.sign = number_str[0]
             number_str = number_str[1:]
         else:
             self.sign = '+'
 
-        # Separação decimal
         parts = number_str.split('.')
         if len(parts) > 2:
-            raise ValueError("O número possui mais de um separador decimal (vírgula/ponto).")
+            raise ValueError("O número possui mais de um separador decimal.")
 
-        # Processamento do vetor inteiro
         int_str = parts[0] if parts[0] else "0"
-        self.integer_part = []
-        for char in int_str:
+        frac_str = parts[1] if len(parts) == 2 else ""
+
+        self.digits = []
+        
+        # Preenche o vetor contínuo com todos os dígitos juntos
+        for char in int_str + frac_str:
             val = self.mapper.get_value(char)
             if val >= self.base:
-                raise ValueError(f"Dígito '{char}' é inválido ou excede a base {self.base}.")
-            self.integer_part.append(char)
-
-        # Processamento do vetor fracionário
-        self.fractional_part = []
-        if len(parts) == 2:
-            frac_str = parts[1]
-            for char in frac_str:
-                val = self.mapper.get_value(char)
-                if val >= self.base:
-                    raise ValueError(f"Dígito '{char}' é inválido ou excede a base {self.base}.")
-                self.fractional_part.append(char)
+                raise ValueError(f"Dígito '{char}' é inválido para a base {self.base}.")
+            self.digits.append(char)
+            
+        # A posição da vírgula é exatamente o tamanho do bloco inteiro na string original
+        self.comma_position = len(int_str)
 
     def __str__(self):
-        """Reconstrução visual do vetor para fins de log/debug."""
-        int_str = "".join(self.integer_part) if self.integer_part else "0"
-        frac_str = "".join(self.fractional_part)
+        """Reconstrução visual fatiando o vetor único pela posição da vírgula."""
+        int_part = "".join(self.digits[:self.comma_position])
+        if not int_part:
+            int_part = "0"
+            
+        frac_part = "".join(self.digits[self.comma_position:])
         
         sinal_str = "-" if self.sign == '-' else ""
-        frac_str_formatada = f".{frac_str}" if frac_str else ""
+        frac_str_formatada = f".{frac_part}" if frac_part else ""
             
-        return f"{sinal_str}{int_str}{frac_str_formatada} (Base {self.base})"
+        return f"{sinal_str}{int_part}{frac_str_formatada} (Base {self.base})"
