@@ -470,7 +470,7 @@ A lógica matemática de pré-computação da tabela de subtração é:
 
 ### 4.2 Alinhamento em Ponto Flutuante
 
-Para que os operandos vetoriais (`FloatVector`) operem sem colapso, implementamos no módulo `DirectOperations` o método `align_vectors`. 
+Para que os operandos vetoriais (`FloatVector`) operem sem colapso, implementamos no módulo `DirectOperations` o método `_align_vectors`. 
 A regra básica de operações elementares, aplicável a todas as bases de 2 a 36, é **Vírgula embaixo de vírgula**.
 - Os zeros à **esquerda da parte inteira** (zero-padding) não alteram o valor numérico.
 - Os zeros à **direita da parte fracionária** (zero-padding) não alteram o valor numérico.
@@ -478,7 +478,7 @@ Assim, $12.5 + 1.25$ se converte no vetor alinhado $12.50 + 01.25$. A posição 
 
 ### 4.3 A Adição e Subtração Universais sem Intervenção Decimal
 
-As operações (denominadas `_unsigned_add` e `_unsigned_sub`) não convertem os blocos de algarismos em valores decimais. Se o sistema está processando Hexadecimal e encontra a coluna `A` e `1`, ele envia o par de caracteres `('A', '1')` à tabela hash, que imediatamente retorna o caractere `'B'`. Não existe matemática de tempo de execução, preservando assim a pureza da **Aritmética Direta na Base**, como exigido pelo edital do projeto.
+As operações não convertem os blocos de algarismos em valores decimais. Se o sistema está processando Hexadecimal e encontra a coluna `A` e `1`, ele envia o par de caracteres `('A', '1')` à tabela hash, que imediatamente retorna o caractere `'B'`. Não existe matemática de tempo de execução, preservando assim a pureza da **Aritmética Direta na Base**, como exigido pelo edital do projeto.
 
 No caso da **Subtração Vetorial**, o algoritmo exige que a parcela de cima seja, no mínimo, do mesmo tamanho da de baixo ($A \ge B$). 
 Para cada casa de índice $i$:
@@ -494,8 +494,8 @@ O orquestrador público exposto pelo módulo `DirectOperations`:
 2. Converte todas as subtrações em adições de sinais invertidos: $A - B \rightarrow A + (-B)$.
 3. Efetua a checagem absoluta (módulo) usando o método `is_greater_or_equal_abs`.
 4. Roteia a execução:
-   - Se os sinais forem iguais: aciona a soma simples (`_unsigned_add`) e mantém o sinal comum.
-   - Se os sinais diferem: aciona a subtração armada (`_unsigned_sub`), colocando no topo a maior magnitude, e herdando o sinal do vetor absoluto superior.
+   - Se os sinais forem iguais: aciona a soma simples e mantém o sinal comum.
+   - Se os sinais diferem: aciona a subtração armada, colocando no topo a maior magnitude, e herdando o sinal do vetor absoluto superior.
 
 Esse controle de fluxo é a **chave** que permite processar Reais negativos perfeitamente.
 
@@ -510,7 +510,7 @@ Esse controle de fluxo é a **chave** que permite processar Reais negativos perf
 > Pela arquitetura de **Look-Up Table** (Tabela de Consulta Hash) desenvolvida no Dia 2 e expandida no Dia 4. No momento da instância do código para Hexadecimal, geramos uma matriz estática que aponta a chave hash `('B', 'A')` diretamente à tupla de retorno `(borrow='0', resultado='1')`. Nós nunca fazemos o CPU calcular $11 - 10$ no meio da soma; nós acessamos a memória em $O(1)$.
 
 **Pergunta 3: O que vocês fazem se o usuário pede para calcular $3 - 8$ (ou seja, quando $A < B$)? A subtração vetorial de vocês permite gerar dígitos negativos?**
-> Não. O registrador abstrato foi programado para jamais emitir um caractere `-` isolado no meio do vetor. O método `_unsigned_sub` obriga que a magnitude de $A \ge B$. O orquestrador superior lida com a solicitação calculando $|8| - |3|$, que gera a saída `5`, e depois anexa cirurgicamente o sinal de quem tinha a maior magnitude absoluta, resultando em `-5`.
+> Não. O registrador abstrato foi programado para jamais emitir um caractere `-` isolado no meio do vetor. O método bruto de matemática obriga que a magnitude de $A \ge B$. O orquestrador superior lida com a solicitação calculando $|8| - |3|$, que gera a saída `5`, e depois anexa cirurgicamente o sinal de quem tinha a maior magnitude absoluta, resultando em `-5`.
 
 **Pergunta 4: O algoritmo permite base decimal (10) como ponte para o carry ou o borrow na subtração armada?**
 > Absolutamente não. Essa é a restrição mais importante do Dia 4. O nosso borrow funciona inteiramente a partir das tabelas nativas de cada base. Se estivermos na Base 2, um empréstimo (borrow) vale exatamente $2$. Nós nunca transformamos as strings do vetor para `int` em Python para fazer uma matemática decimal oculta.
@@ -519,7 +519,7 @@ Esse controle de fluxo é a **chave** que permite processar Reais negativos perf
 > Isso é matematicamente impossível. Se subtrairmos a coluna de cima pela coluna de baixo ($b_1$) e isso gerar borrow, é porque $A < B$. Isso significa que o resultado temporário já incorporou o bônus da base e se tornou largo o suficiente de forma que subtrair um único $-1$ adicional de borrow na cascata ($b_2$) não necessitará pedir outro à esquerda. Logo, $b_1$ e $b_2$ nunca podem estourar somados.
 
 **Pergunta 6: Na subtração armada, qual é o critério de parada da propagação de zeros? (Ex: o falso $04.5 - 04.5 = 00.0$)**
-> A função `_unsigned_sub` e a função de roteamento geral executam a sanitização através de blocos `while`. Na parte inteira, todos os zeros excedentes à esquerda são descartados através de cortes (pops) na lista, até atingirmos um limite que pare perto da vírgula (evitando apagar o `.0` no final absoluto). A regra `is_greater_or_equal_abs` é quem nos previne que um vetor acabe com $000$ fantasmas poluindo a visualização limpa de string.
+> A função de roteamento geral executam a sanitização através de blocos `while`. Na parte inteira, todos os zeros excedentes à esquerda são descartados através de cortes (pops) na lista, até atingirmos um limite que pare perto da vírgula (evitando apagar o `.0` no final absoluto). A formatação final é quem nos previne que um vetor acabe com $000$ fantasmas poluindo a visualização limpa de string.
 
 **Pergunta 7: Em um empréstimo (borrow) muito estendido (ex: $1000_{16} - 1_{16}$), como a sua string reage à travessia por múltiplos zeros?**
 > De maneira mecânica e natural. A cada zero processado, $0_{16} - 0_{16} - \text{borrow\_anterior} (1)$ dispara a tabela que sabe que $0 - 1 = \text{resultado } F$, e exige borrow de 1 para o colega seguinte à esquerda. O algoritmo é um loop rígido que não "enxerga" o final: ele só para quando a varredura atinge o índice $0$ da string alinhada, o que consome perfeitamente o $1 - 1 = 0$ na extrema esquerda.
@@ -532,3 +532,61 @@ Esse controle de fluxo é a **chave** que permite processar Reais negativos perf
 
 **Pergunta 10: Ao dizer que resolvemos $A - B$ invertendo o sinal de $B$ e chamando a Adição, que Padrão de Engenharia de Software foi respeitado?**
 > Reuso de Código de Alto Nível (DRY) e Abstração Algébrica. Na matemática, a subtração genuína não passa de uma adição perante um inverso aditivo. Nossa API não precisa se desdobrar criando duas lógicas para controle de sinais (uma de soma, uma de subtração). Encapsulando tudo perante uma porta de entrada global, se o dev pedir "Diminua 5 de 10", nós clonamos a variável do 5, transformamos em -5, e entregamos para o módulo de soma lidar com $10 + (-5)$. O roteador cuida do resto de forma muito elegante.
+
+---
+
+## Dia 05: Operações Elementares Diretas — Multiplicação e Divisão
+
+### 5.1 Multiplicação com Produtos Parciais e Ponto Flutuante
+
+A multiplicação entre números reais não requer o alinhamento das vírgulas no momento da operação (ao contrário da adição). Nós adotamos a abordagem algébrica clássica das escolas:
+1. **Desconsideração Temporária da Vírgula:** Multiplicamos as magnitudes inteiras puras dos vetores usando `VectorMath.mul()`.
+2. **Produtos Parciais:** Para cada dígito $d_i$ do multiplicador, multiplicamos pelo multiplicando inteiro. Esse sub-vetor é acrescido de $i$ zeros à direita (simulando a multiplicação física por $Base^i$) e acumulado no total.
+3. **Reposicionamento da Vírgula:** A posição final da vírgula é sempre a exata soma das casas fracionárias dos dois operandos ($casas\_A + casas\_B$). Se faltarem dígitos inteiros, o método de formatação insere zeros à esquerda (ex: `0.5 * 0.5 = 0.25`).
+
+### 5.2 Divisão Longa Vetorial (A Chave da Divisão Nativa)
+
+A operação de divisão (`div`) é o componente mais complexo do processador. O algoritmo implementado replica a "divisão longa" operada diretamente na base:
+1. **Normalização do Divisor:** Deslocamos as vírgulas simultaneamente para a direita até que o Divisor ($B$) se torne estritamente inteiro. A vírgula do Dividendo ($A$) se move na mesma proporção. Isso previne manipulações infinitas de casas.
+2. **Chute N-ário (Busca Exaustiva de Quociente):** Como estamos numa base genérica (de 2 a 36), o dígito do quociente está contido no intervalo $[0, Base-1]$. Nós iteramos tentando multiplicar o divisor. O maior dígito cuja multiplicação não exceda o "dividendo parcial" é anexado ao Quociente oficial.
+3. **Travessia da Vírgula:** Ao "descer" dígitos de $A$, se atingirmos a posição da vírgula original, marcamos essa posição para o vetor final. Caso esgotem os dígitos do dividendo e ainda haja resto, injetamos zeros (extensão fracionária) e continuamos dividindo até exaurir o resto ou atingir o limite de segurança `max_precision`.
+
+### 5.3 A Refatoração Arquitetural (Desacoplamento e Clean Code)
+
+Para lidar com a complexidade das 4 operações sem criar classes monolíticas "God Object", no Dia 5 aplicamos uma separação estrita de camadas (Responsabilidade Única):
+- **`VectorMath` (Baixo Nível):** Arquivo dedicado exclusivamente ao processamento matricial bruto, carry e borrows (inteiros não-sinalizados). Ele não sabe o que é ponto flutuante nem lida com sinais.
+- **`DirectOperations` (Alto Nível):** Arquivo orquestrador (*Facade*) que lida com `FloatVectors`, cuida do roteamento de sinais matemáticos (ex: $-A \times -B = +C$), preenche zeros, ajusta a vírgula fracionária, e delega o processamento sujo à classe de baixo nível.
+
+---
+
+### 5.4 Dez Possíveis Perguntas do Professor — Dia 05
+
+**Pergunta 1: Por que na multiplicação as vírgulas não são alinhadas previamente como na soma?**
+> Porque alinhá-las geraria excesso de zeros redundantes ao quadrado. Matematicamente, a vírgula é somada no final do processo, sendo totalmente equivalente a multiplicar os inteiros absolutos e reajustá-los: $A \times B \times 10^{-a} \times 10^{-b}$. O orquestrador trata os vetores como inteiros absolutos provisórios.
+
+**Pergunta 2: O que o algoritmo faz se na multiplicação os operandos forem $0.1_2$ e $0.1_2$?**
+> A magnitude bruta (sem vírgula) de ambos é $1$. Logo, $1 \times 1 = 1$. O somatório de casas fracionárias ($1+1$) exige que o resultado tenha duas casas fracionárias. Como o vetor resultado (`['1']`) só tem um caractere, nosso orquestrador percebe a falta de tamanho e insere zeros à esquerda, deslocando a vírgula para a resposta perfeita: $0.01_2$.
+
+**Pergunta 3: Por que, na divisão, o divisor é obrigatoriamente transformado num inteiro movendo as vírgulas?**
+> Porque é matematicamente insustentável avaliar de forma algorítmica quantas vezes um divisor *fracionário* "cabe" num dividendo parcial fracionário na chave da divisão, sem que se crie problemas de alinhamento com os restos parciais. Multiplicar ambos os lados por $Base^k$ não altera o Quociente e estabiliza a matriz de divisão longa para números inteiros (normalização).
+
+**Pergunta 4: Como o sistema descobre o dígito correto do quociente numa base gigante como 36, já que não temos o operador "/"?**
+> Usando Busca Linear Multiplicativa. Na hora de "chutar" o número que vai na chave da divisão, o algoritmo testa todos os multiplicadores (do dígito 1 ao 35) utilizando nosso simulador genérico `_unsigned_mul_digit`. O último dígito a testar positivo sem ultrapassar a barreira do "dividendo parcial" é coroado como a resposta correta da iteração. 
+
+**Pergunta 5: Como o algoritmo de divisão diferencia uma dízima periódica de um número muito longo ou infinito?**
+> O nosso algoritmo de divisão lida com operações racionais longas através de um limite preventivo parametrizável chamado `max_precision` (Padrão: 10 casas). Diferente da conversão (onde precisamos mapear repetições cíclicas para criar notações como `0.(3)`), na operação algébrica da CPU nós realizamos um truncamento programado similar ao silício real, caso o resto nunca atinja `['0']`.
+
+**Pergunta 6: Qual foi o ganho real de se extrair o `VectorMath` do `DirectOperations` durante a refatoração de design?**
+> Aderência máxima aos Princípios SOLID (Especificamente a Responsabilidade Única). Criamos um ecossistema onde as camadas não conversam com estruturas alheias. O `DirectOperations` ficou responsável apenas pela regra de negócio (Ponto Flutuante, Sinais +, -, alinhamento) enquanto a classe `VectorMath` atua exclusivamente nos *Loops* absolutos das listas brutas, barateando a manutenção de código.
+
+**Pergunta 7: Como a lógica de Sinais atua na Multiplicação e Divisão em contraste com a Soma?**
+> É extremamente simples e direta (regra dos sinais). Diferente da adição — onde precisamos identificar quem tem maior magnitude para herdar o sinal — a multiplicação e divisão usam porta lógica simples: se `sign_A == sign_B`, a resposta é forçada instantaneamente para positivo `+`. Caso os sinais difiram, a resposta recebe negativo `-`.
+
+**Pergunta 8: A divisão de vocês pode travar a aplicação em *loop infinito* se o divisor inserido for zero?**
+> Não. O sistema possui uma barreira de segurança $O(n)$ instalada na primeiríssima linha do método `div`. Ele avalia toda a lista de caracteres do divisor: se todos os elementos no vetor pertencerem exclusivamente ao caractere `0`, nós rejeitamos a execução e levantamos uma exceção `ZeroDivisionError` nativa antes de alocar memória.
+
+**Pergunta 9: Existem chamadas recursivas nessas implementações matemáticas? Qual o perigo disso?**
+> Não. Toda a aritmética é estritamente iterativa (laços `while` e `for`). Se tivéssemos feito uma recursão para calcular restos sucessivos ou borrows encadeados, nós correríamos um sério risco de estourar a pilha de execução do interpretador (Stack Overflow) lidando com decimais de alta precisão ou matrizes longas.
+
+**Pergunta 10: Qual o papel principal do `DirectOperations` se agora ele não faz a conta matemática bruta da base?**
+> Ele é o nosso Maestro Operacional (uma implementação clara do Design Pattern *Facade*). Ele esconde do usuário toda a feiura da abstração de listas, servindo como uma interface de alto nível que blinda as leis do ponto flutuante, devolvendo os objetos `FloatVectors` perfeitamente estruturados e polidos ao final de qualquer cálculo.
