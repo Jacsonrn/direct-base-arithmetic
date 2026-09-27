@@ -300,16 +300,9 @@ Quando convertemos $\text{2A3}_{16}$ para Base 10:
 
 Em nenhum momento a Base 16 realiza operações — ela apenas fornece os dígitos de entrada.
 
-E se quiséssemos converter $\text{2A3}_{16}$ para Base 7?
-- O valor $16$ é representado como `['2', '2']` no vetor da Base 7 (pois $16_{10} = 22_7$).
-- O dígito `'A'` (peso 10) é representado como `['1', '3']` no vetor da Base 7 (pois $10_{10} = 13_7$).
-- As multiplicações e somas são realizadas pela ALU da Base 7.
+### 2.4 Aritmética Vetorial "Armada" e a Refatoração DRY (`VectorMath`)
 
-**A Base 10 não participa em nenhuma etapa** — a conversão é genuinamente direta.
-
-### 2.4 Aritmética Vetorial "Armada"
-
-Para que o Método de Horner funcione com vetores de caracteres, precisamos de duas operações fundamentais sobre vetores: **adição** e **multiplicação**.
+Para que o Método de Horner funcione com vetores de caracteres, precisamos de duas operações fundamentais sobre vetores: **adição** e **multiplicação**. Estas operações foram isoladas na classe `VectorMath` (implementando o princípio DRY - *Don't Repeat Yourself*), o que permite que elas sejam utilizadas tanto pela conversão da parte inteira (Dia 2) quanto fracionária (Dia 3).
 
 #### 2.4.1 Adição Vetorial com Carry ("Vai-Um")
 
@@ -324,104 +317,140 @@ O algoritmo de adição vetorial replica exatamente o procedimento manual de "ar
    - O dígito da posição $i$ do resultado é $s_{\text{final}}$.
 4. **Carry final**: Se após a última posição ainda restar carry, ele é inserido à esquerda do resultado.
 
-**Exemplo na Base 5:** Somar $34_5 + 23_5$:
-
-```
-  Carry:  1
-    3 4
-  + 2 3
-  -----
-  1 1 2    →  Resultado: 112₅
-```
-
-- Posição 0 (direita): `4 + 3` → consulta tabela → carry=`1`, dígito=`2`
-- Posição 1: `3 + 2` → carry=`1`, dígito=`0`, depois soma carry anterior `1` → dígito=`1`
-- Carry final: `1` é inserido à esquerda
-
-#### 2.4.2 Multiplicação Vetorial por Dígito Único
-
-Este é o bloco fundamental da multiplicação. Multiplica-se cada dígito do vetor pelo dígito multiplicador, da direita para a esquerda, propagando carry:
-
-1. Para cada posição $i$ (da direita para a esquerda):
-   - Multiplica $v_i \times d$ usando a tabela de multiplicação → $(c_1, p)$.
-   - Soma o carry anterior: $p + \text{carry}$ → $(c_2, r)$.
-   - Novo carry: $c_1 + c_2$.
-   - Dígito do resultado na posição $i$: $r$.
-2. Carry final é inserido à esquerda.
-
-#### 2.4.3 Multiplicação Vetorial Completa (Produtos Parciais)
+#### 2.4.2 Multiplicação Vetorial Completa (Produtos Parciais)
 
 A multiplicação de dois vetores multi-dígito segue o método clássico de **produtos parciais** que aprendemos na escola:
 
 1. Para cada dígito $d_i$ do segundo operando (da direita para a esquerda, com índice $i$):
    - Calcula-se o **produto parcial**: $\text{vec\_a} \times d_i$ (usando `_vector_mul_digit`).
    - Desloca-se o produto parcial $i$ posições para a esquerda (adicionando $i$ zeros à direita), simulando a multiplicação por $B^i$.
-2. Todos os produtos parciais são **somados** usando `_vector_add`.
-
-**Exemplo na Base 10:** $23 \times 14$:
-
-```
-    2 3
-  × 1 4
-  -----
-    9 2    ← Produto parcial: 23 × 4
-  2 3 0    ← Produto parcial: 23 × 1, deslocado 1 posição
-  -----
-  3 2 2    ← Soma dos produtos parciais
-```
+2. Todos os produtos parciais são **somados** usando a função de adição vetorial.
 
 ### 2.5 A Função `_small_int_to_vector`: Fronteira Controlada
 
 A função `_small_int_to_vector(val)` é a **única fronteira** onde um inteiro Python é convertido para a representação vetorial. Ela é usada exclusivamente para converter:
-- O valor da base de origem (ex: `16` se estamos convertendo **da** Base 16).
+- O valor da base de origem ou destino (ex: `16` se estamos convertendo **da/para** Base 16).
 - O peso de um dígito individual (ex: `10` para o dígito `'A'`).
 
 Esses valores são sempre **pequenos** (no máximo 35 para dígitos, e no máximo 36 para bases), e a conversão ocorre apenas na **inicialização** do processo. Uma vez convertidos para vetores, toda a matemática subsequente opera exclusivamente sobre caracteres, usando as tabelas da ALU.
 
 Esse padrão é análogo à fronteira entre hardware e software: o compilador converte constantes numéricas em representações binárias uma vez, e o circuito então opera autonomamente.
 
-### 2.6 Complexidade Computacional
-
-| Operação | Complexidade |
-|----------|-------------|
-| Consulta à tabela (lookup) | $O(1)$ |
-| Adição de vetores de $n$ dígitos | $O(n)$ |
-| Multiplicação por dígito único (vetor de $n$ dígitos) | $O(n)$ |
-| Multiplicação de vetores ($n$ dígitos $\times$ $m$ dígitos) | $O(n \cdot m)$ |
-| Conversão de Horner ($k$ dígitos de origem, resultado com até $n$ dígitos no destino) | $O(k \cdot n^2)$ no pior caso |
-
-A complexidade da conversão de Horner é cúbica no pior caso porque, a cada iteração, os vetores de resultado crescem, tornando as multiplicações e somas progressivamente mais caras. Isso é aceitável para o escopo acadêmico do projeto.
-
 ---
 
-### 2.7 Dez Possíveis Perguntas do Professor — Dia 02
+### 2.6 Dez Possíveis Perguntas do Professor — Dia 02
 
 **Pergunta 1: O que é o Método de Horner e por que ele é mais eficiente que a avaliação polinomial direta?**
 > O Método de Horner reescreve o polinômio $d_{n-1} B^{n-1} + \cdots + d_0$ na forma aninhada $((d_{n-1} \cdot B + d_{n-2}) \cdot B + \cdots) \cdot B + d_0$. A forma direta exige calcular todas as potências de $B$ separadamente ($B^2, B^3, \ldots$), gerando $\sim 2n$ multiplicações. O Método de Horner elimina completamente o cálculo de potências, reduzindo para apenas $n-1$ multiplicações e $n-1$ adições. Além de ser mais rápido, evita o armazenamento de potências intermediárias que cresceriam exponencialmente como vetores gigantescos.
 
 **Pergunta 2: Como vocês garantem que a conversão é realmente direta e não usa a Base 10 como pivô escondido?**
-> Toda a aritmética do Método de Horner é executada usando as tabelas da ALU da **base de destino**. A base de origem é convertida para um vetor na base de destino via `_small_int_to_vector`, e cada dígito de entrada também é convertido para vetor na base de destino. A partir daí, todas as multiplicações e somas acontecem exclusivamente com consultas às tabelas `add_table` e `mul_table` da base de destino. A Base 10 não aparece em nenhuma operação intermediária — ela sequer possui tabelas carregadas no contexto da conversão.
+> Toda a aritmética do Método de Horner é executada usando as tabelas da ALU da **base de destino**. A base de origem é convertida para um vetor na base de destino via `_small_int_to_vector`, e cada dígito de entrada também é convertido para vetor na base de destino. A partir daí, todas as multiplicações e somas acontecem exclusivamente com consultas às tabelas `add_table` e `mul_table` da base de destino. A Base 10 não aparece em nenhuma operação intermediária — ela sequer possui tabelas carregadas no contexto da conversão (exceto, é claro, se ela própria for a base de destino).
 
 **Pergunta 3: Por que a ALU usa tabelas pré-computadas em vez de calcular as operações em tempo real?**
-> Por três razões: (1) **Aderência ao projeto**: calcular em tempo real significaria usar `+` e `*` do Python sobre inteiros nativos durante a conversão, que acionariam a ALU binária do hardware — violando a restrição. (2) **Analogia com hardware real**: processadores reais usam circuitos combinacionais pré-configurados na fabricação que produzem resultados instantâneos para pares de entrada fixos, exatamente como nossas tabelas. (3) **Desempenho**: a consulta a um dicionário hash é $O(1)$, garantindo que cada operação dígito-a-dígito é instantânea.
+> Por três razões: (1) **Aderência ao projeto**: calcular em tempo real significaria usar `+` e `*` do Python sobre inteiros nativos durante a conversão, que acionariam a ALU binária do hardware — violando a restrição de "simulação puramente abstrata". (2) **Analogia com hardware real**: processadores reais usam circuitos combinacionais pré-configurados na fabricação que produzem resultados instantâneos para pares de entrada fixos, exatamente como nossas tabelas. (3) **Desempenho**: a consulta a um dicionário hash é $O(1)$, garantindo que cada operação dígito-a-dígito seja instantânea.
 
 **Pergunta 4: A geração das tabelas aritméticas usa operações nativas do Python como `+`, `*`, `//` e `%`. Isso não viola a restrição do projeto?**
-> Não, porque a restrição proíbe usar `int` e `float` para representar a **magnitude completa do número sendo processado**. Os valores usados na geração das tabelas são parâmetros de fabricação — sempre menores que $B^2$ (no máximo $35 \times 35 = 1225$) e representam pesos de dígitos individuais, não dados do problema. A analogia é a fabricação de um chip: o engenheiro de hardware usa ferramentas externas (CAD, simuladores) para projetar e construir os circuitos da ALU. Uma vez construída, a ALU opera autonomamente. Da mesma forma, uma vez geradas as tabelas, toda a aritmética subsequente ocorre por consulta pura.
+> Não, porque a restrição proíbe usar `int` e `float` para representar a **magnitude completa do número sendo processado**. Os valores usados na geração das tabelas são parâmetros de fabricação — sempre menores que $B^2$ (no máximo $35 \times 35 = 1225$) e representam pesos de dígitos individuais, não dados do problema. A analogia é a fabricação de um chip: o engenheiro de hardware usa ferramentas externas (CAD, simuladores) para projetar os circuitos. Uma vez construída, a ALU opera autonomamente por buscas no dicionário hash.
 
 **Pergunta 5: Explique passo a passo como funciona a adição vetorial com carry. O que acontece quando a soma de dois dígitos excede a base?**
-> A adição vetorial percorre os dois vetores da direita para a esquerda (do menos significativo para o mais significativo), idêntico a "armar a conta" no papel. Para cada par de dígitos, consultamos a tabela de adição, que retorna uma tupla $(carry, resultado)$. Se a soma excede a base (por exemplo, $4 + 3 = 7$ na Base 5), o carry será $\lfloor 7/5 \rfloor = 1$ e o resultado será $7 \mod 5 = 2$. Esse carry é então somado na próxima posição à esquerda. Se após processar todos os dígitos ainda restar carry, ele é inserido como um novo dígito à esquerda do resultado. O algoritmo também trata o caso de dois carries simultâneos (um da soma dos dígitos e outro da soma com o carry anterior).
+> A adição vetorial (na classe `VectorMath`) percorre os dois vetores da direita para a esquerda (do menos significativo para o mais significativo), de modo idêntico a "armar a conta" no papel. Para cada par de dígitos, consultamos a tabela de adição, que retorna uma tupla $(carry, resultado)$. Se a soma excede a base (por exemplo, $4 + 3 = 7$ na Base 5), o carry será $\lfloor 7/5 \rfloor = 1$ e o resultado será $7 \mod 5 = 2$. Esse carry é então somado na próxima posição à esquerda. Se após processar todos os dígitos ainda restar carry, ele é inserido como um novo dígito à esquerda do resultado.
 
 **Pergunta 6: Como funciona a multiplicação de dois vetores multi-dígito? Descreva o conceito de "produtos parciais".**
-> A multiplicação vetorial usa o mesmo método que aprendemos na escola primária. Percorremos o segundo operando da direita para a esquerda. Para cada dígito $d_i$ (na posição $i$), multiplicamos todo o primeiro vetor por esse dígito único usando `_vector_mul_digit`, gerando um **produto parcial**. Esse produto parcial é então deslocado $i$ posições para a esquerda (adicionamos $i$ zeros à direita), o que equivale a multiplicar por $B^i$, respeitando o peso posicional. Finalmente, todos os produtos parciais são somados usando `_vector_add`. O resultado é a multiplicação completa, executada inteiramente com consultas às tabelas da base.
+> A multiplicação vetorial (na classe `VectorMath`) usa o mesmo método que aprendemos na escola primária. Percorremos o segundo operando da direita para a esquerda. Para cada dígito $d_i$ (na posição $i$), multiplicamos todo o primeiro vetor por esse dígito único, gerando um **produto parcial**. Esse produto parcial é então deslocado $i$ posições para a esquerda (adicionamos $i$ zeros à direita), o que equivale a multiplicar por $B^i$, respeitando o peso posicional. Finalmente, todos os produtos parciais são somados. O resultado é a multiplicação completa, executada inteiramente com consultas às tabelas da base.
 
 **Pergunta 7: O que é a função `_small_int_to_vector` e por que ela é necessária?**
-> É a função que converte pequenos inteiros nativos (como o valor da base de origem ou o peso de um dígito individual) em vetores de caracteres na base de destino. Ela é necessária porque o Método de Horner precisa que a base de origem e cada dígito estejam representados como vetores para poder operar sobre eles com as tabelas da ALU. Esses inteiros são sempre pequenos (no máximo 36), e a conversão ocorre apenas na inicialização do processo. É a **única fronteira controlada** entre o mundo dos inteiros Python e o mundo dos vetores simbólicos. Uma vez que os valores são convertidos, toda a aritmética subsequente é puramente vetorial.
+> É a função que converte pequenos inteiros nativos (como o valor da base de origem ou o peso de um dígito individual) em vetores de caracteres na base alvo. Ela é necessária porque as operações (Horner ou Multiplicações Sucessivas) precisam que a base e cada dígito estejam representados como vetores para poder operar sobre eles com as tabelas da ALU. Esses inteiros são sempre pequenos (no máximo 36), e a conversão ocorre apenas na inicialização do processo (como configuração). É a **única fronteira controlada** entre o mundo dos inteiros Python e o mundo dos vetores simbólicos.
 
 **Pergunta 8: Se eu quiser converter o número $\text{FF}_{16}$ para a Base 3, como o algoritmo procederia? Detalhe as operações.**
-> Passo 0: A ALU é carregada com tabelas da Base 3. A base de origem (16) vira o vetor `['1', '2', '1']` na Base 3 (pois $16_{10} = 121_3$). Passo 1: dígito `'F'` (peso 15) vira vetor `['1', '2', '0']` na Base 3 (pois $15_{10} = 120_3$). Horner: resultado $= ['0'] \times ['1','2','1'] + ['1','2','0'] = ['1','2','0']$. Passo 2: dígito `'F'` (peso 15) novamente. Horner: resultado $= ['1','2','0'] \times ['1','2','1'] + ['1','2','0']$. Todas as multiplicações e somas são feitas consultando as tabelas da Base 3. O resultado final será $100110_3$ (equivalente a $255_{10}$). Em nenhum momento a Base 10 ou a Base 16 realizaram operações — apenas a Base 3.
+> Passo 0: O `IntegerConverter` instancia a ALU carregada com tabelas da Base 3 (destino). A base de origem (16) vira o vetor `['1', '2', '1']` na Base 3 (pois $16_{10} = 121_3$). Passo 1: O primeiro dígito `'F'` (peso 15) vira vetor `['1', '2', '0']` na Base 3 (pois $15_{10} = 120_3$). Horner: resultado $= ['0'] \times ['1','2','1'] + ['1','2','0'] = ['1','2','0']$. Passo 2: O segundo dígito `'F'` (peso 15) novamente. Horner: resultado $= ['1','2','0'] \times ['1','2','1'] + ['1','2','0']$. Todas as multiplicações e somas são feitas pelo `VectorMath` consultando as tabelas da Base 3. O resultado final será $100110_3$ (equivalente a $255_{10}$). A Base 16 só serviu para dar a string inicial; a Base 10 não serviu para nada.
 
 **Pergunta 9: Qual a complexidade computacional da conversão pelo Método de Horner? Ela é aceitável para o projeto?**
-> A conversão de Horner para um número com $k$ dígitos na base de origem, produzindo resultados com até $n$ dígitos na base de destino, tem complexidade $O(k \cdot n^2)$ no pior caso. Isso ocorre porque a cada iteração de Horner, realizamos uma multiplicação vetorial ($O(n \cdot m)$ onde $m$ é o tamanho do vetor da base) seguida de uma adição ($O(n)$), e o vetor resultado cresce a cada passo. Para o escopo acadêmico do projeto, que lida com números de tamanho moderado, essa complexidade é perfeitamente aceitável. Otimizações como Karatsuba ou FFT reduziriam a complexidade, mas adicionariam complexidade de implementação desnecessária.
+> A conversão de Horner para um número com $k$ dígitos na base de origem, produzindo resultados com até $n$ dígitos na base de destino, tem complexidade $O(k \cdot n^2)$ no pior caso. Isso ocorre porque a cada iteração de Horner, realizamos uma multiplicação vetorial ($O(n \cdot m)$ onde $m$ é o tamanho do vetor da base) seguida de uma adição ($O(n)$), e o vetor resultado cresce a cada passo. Para o escopo acadêmico do projeto, que lida com números de tamanho moderado, essa complexidade é perfeitamente aceitável. O foco está na integridade aritmética e eliminação de pivôs.
 
-**Pergunta 10: Por que vocês optaram por executar a aritmética de Horner na base de destino e não na base de origem? Qual seria a diferença?**
-> Optamos por executar na base de destino porque o resultado final **já nasce na base correta**, dispensando qualquer conversão posterior. Se executássemos na base de origem, teríamos o resultado numérico correto, mas ele estaria representado como um vetor na base de origem — e precisaríamos de uma etapa adicional para converter cada dígito do resultado para a base de destino, o que reintroduziria o problema da conversão intermediária. Executar na base de destino garante que o Método de Horner produz o resultado final diretamente, de forma limpa e sem etapas extras. Além disso, essa estratégia é simétrica à técnica usada em conversores de hardware, onde o circuito destino interpreta os sinais de entrada.
+**Pergunta 10: Por que vocês optaram por executar a aritmética de Horner na base de destino e não na base de origem?**
+> Optamos por executar na base de destino porque, dessa forma, o vetor resultante do método de Horner **já nasce na base correta**, dispensando qualquer pós-processamento. Se executássemos na base de origem, obteríamos a magnitude do número correta, porém ela estaria codificada num vetor longo da base de origem (e nós precisaríamos de uma etapa adicional para dividir sucessivamente esse vetor na base destino, o que seria redundante). Além disso, essa estratégia se alinha à simetria espelhada da nossa arquitetura: Horner é executado na Destino (para Inteiros) e Multiplicações Sucessivas são executadas na Origem (para Frações).
+
+---
+
+## Dia 03: Conversão Direta — Parte Fracionária e Integração a $\mathbb{R}$
+
+### 3.1 A Simetria Invertida: Multiplicações Sucessivas na Base de Origem
+
+Para converter a parte **fracionária** entre duas bases arbitrárias de forma puramente abstrata, não podemos utilizar o Método de Horner convencional. A matemática de pesos negativos exige o método das **Multiplicações Sucessivas**.
+
+No Dia 2, para a parte inteira, a ALU era configurada na **Base de Destino**, processando a matemática de "baixo para cima". 
+No Dia 3, ocorre uma simetria espelhada brilhante da teoria dos números: para a parte fracionária, a ALU precisa ser instanciada estritamente na **Base de Origem**.
+
+**Por que na Base de Origem?**
+Seja a fração $0.3_{10}$ (Base 10) que deve ser convertida para Base 2.
+1. Multiplicamos a fração pela base de destino ($2_{10}$): $0.3_{10} \times 2_{10} = 0.6_{10}$.
+2. A operação matemática ($3 \times 2 = 6$) ocorreu obedecendo às tabuadas da Base 10.
+3. O "transbordo" (a parte que passa para a esquerda da vírgula) é retirado e torna-se o próximo dígito na Base 2. No caso, $0$.
+4. O processo se repete com o resto ($0.6_{10}$).
+
+Ao longo deste ciclo, todo o trabalho algébrico é realizado com **vetores da base de origem** utilizando exatamente a mesma classe de apoio `VectorMath` implementada para a parte inteira (Princípio DRY).
+
+### 3.2 O Processamento Integrado de Inteiros e Frações (Reais)
+
+Para atender à restrição máxima do Dia 3 — *"O conversor deve processar perfeitamente a parte inteira e fracionária de forma integrada"* —, foi criado o módulo `DirectConverter`.
+
+A separação entre Horner (para inteiros) e Multiplicações (para frações) não é uma limitação de engenharia de software, mas sim uma exigência da álgebra vetorial abstrata. Se tentássemos computar pesos fracionários negativos em um mesmo loop com Horner, seríamos forçados a fazer sucessivas divisões vetoriais por potências, causando possíveis perdas de precisão antes mesmo da resposta final estar formatada.
+
+A classe `DirectConverter` age como uma **orquestradora**:
+1. Recebe o número real bruto (ex: `"-1A3.F"`).
+2. Transforma-o em um `FloatVector` e localiza o ponteiro da vírgula.
+3. Repassa os vetores de dígitos à esquerda da vírgula para o `IntegerConverter`.
+4. Repassa os vetores de dígitos à direita da vírgula para o `FractionalConverter`.
+5. **Reagrega** tudo em um único e novo `FloatVector` pertencente à base de destino e formata a resposta.
+
+Essa abordagem preserva o encapsulamento, fornece uma API única para uso externo e obedece matematicamente a todos os requisitos.
+
+### 3.3 Dízimas Periódicas Nativas (O Problema do IEEE 754)
+
+No sistema computacional padrão, variáveis `float` armazenam dados sob a norma IEEE 754. Quando um número não tem representação finita numa base, ele se torna uma **dízima**. 
+Exemplo clássico: $0.1_{10}$ (1/10 finito na Base 10) é infinito na Base 2: $0.0001100110011..._{2}$
+
+O hardware lida com isso cortando o número (truncamento). Quando se faz a conversão reversa, o pedaço amputado faz falta, e um erro de arredondamento aparece (o infame *`0.1 + 0.2 = 0.30000000000000004`* do JavaScript/Python).
+
+No projeto U1, o `FractionalConverter` não trabalha com precisão limitada. Ele trabalha com vetores de caracteres exatos da fração. Para evitar um loop infinito em dízimas reais (e diferenciar truncamento de repetição autêntica), adotou-se o rastreamento via **Dicionário de Estados (Hash Map Histórico)**.
+
+**Como funciona a detecção de Dízimas:**
+1. Antes de cada multiplicação sucessiva, a fração atual (ex: `['1', '5']`) tem seus zeros à direita "limpos" (normalização).
+2. Essa fração é convertida em string e adicionada a um dicionário `history`, associada à posição onde estamos (`len(result_digits)`).
+3. Se o algoritmo, no futuro, chegar numa fração exata de resto `['0']`, a conversão para; ela é finita.
+4. Se o algoritmo chegar numa fração que **já consta nas chaves do `history`**, ele detectou um *Déjà Vu*. Ele interrompe o laço instantaneamente, retorna os dígitos computados e informa ao orquestrador o índice exato onde a dízima se inicia (ciclo).
+5. O `DirectConverter` imprime visualmente a notação de dízima: `0.0(0011)`. 
+
+---
+
+### 3.4 Dez Possíveis Perguntas do Professor — Dia 03
+
+**Pergunta 1: Como o conversor trata o fato da conversão fracionária precisar da base de origem para funcionar, em oposição à parte inteira que rodou na de destino?**
+> A arquitetura vetorial lidou com isso instanciando uma segunda ALU (Unidade Lógica e Aritmética). No `FractionalConverter`, nós declaramos `self.tables = ArithmeticTables(source_base, mapper)`. Com a ALU focada na Origem, a classe `VectorMath` realiza a soma e a multiplicação sem que o algoritmo principal tenha de se preocupar. É o mesmo motor operatório da parte inteira, mas operando com o dicionário Hash da base de origem (Simetria Invertida). 
+
+**Pergunta 2: A restrição fala sobre não usar coerção decimal fracionária (multiplicar e dividir por 10). Como vocês se livraram disso?**
+> Um "atalho" infeliz em conversores fracionários seria assumir a fração $0.35$ como o inteiro $35$, submetê-la ao conversor inteiro do Dia 2, e depois dividir no destino por $100$. Isso exige coerção decimal base 10 implícita. Nosso `FractionalConverter` isola os caracteres (ex: `['3', '5']`) num sub-vetor. Usamos o `VectorMath` para efetivamente fazer `['3', '5'] * DestBaseVector` usando a ALU original. Dessa forma, as variáveis nunca formam uma magnitude numérica inteira artificial, eliminando coerção nativa de potências da Base 10.
+
+**Pergunta 3: Qual é o risco de não se isolar inteiros e fracionários e tentar rodar tudo de uma vez com Horner em Bases diferentes de 10?**
+> A aritmética posicional, fundamentalmente, exige comportamentos opostos para Expoentes Positivos (divergentes) e Expoentes Negativos (convergentes). Horner exige o armazenamento de divisões para a direita. Ao rodar divisões em vetores abstratos em bases genéricas, cairíamos num vórtice infinito logo no primeiro algarismo não múltiplo da base. Separando-os pela posição da vírgula, efetuamos Multiplicação no fracionário. Orquestrando tudo no final com a classe `DirectConverter`, temos estabilidade de 100% e evitamos divisão.
+
+**Pergunta 4: O que significa o rastreamento via "Dicionário de Estados"? Como o projeto detecta uma dízima periódica?**
+> Quando estamos multiplicando o resto da fração, nós sempre guardamos a "assinatura" do resto num Hash Map do Python, apontando para em qual índice do loop ele apareceu. Se o resto $X$ der as caras de novo, a matemática provará que os próximos passos serão exatamente os mesmos. O algoritmo aciona o "break", pega o índice apontado no Dicionário, e nós "envelopamos" com parênteses os dígitos a partir do índice salvo. Exemplo: um $0.3333..._{10}$ originário de um $0.1_3$ é detectado assim que a sobra "1" aparece pela segunda vez. Retorna-se `0.(3)`.
+
+**Pergunta 5: A detecção de dízima tem um alto custo de memória já que salva cada resto histórico?**
+> Não. O objeto `history` armazena apenas um dicionário de strings curtas, de acordo com as casas fracionárias, em complexidade de tempo de busca $O(1)$. Além disso, inserimos um `max_precision=20` preventivo; caso o usuário faça um cálculo irracional infinito (ou uma dízima muito exótica), após 20 iterações o algoritmo aceitará a aproximação e encerrará o loop. Isso mantém a pegada de memória ($O(K)$) no Dicionário negligenciável perante a infraestrutura.
+
+**Pergunta 6: Na saída visual final, o que o `DirectConverter` faz ao receber `0` na parte inteira e um loop do `FractionalConverter`?**
+> A parte inteira devolverá ao vetor apenas a string `['0']`. O fracionário devolverá uma lista contendo, por exemplo, o vetor `['0', '0', '1', '1']` e o índice $1$ marcando o ciclo. O `DirectConverter.format_output` injetará o caractere de vírgula/ponto da notação exata no índice indicado, e isolará a string entre os parênteses referentes ao ciclo: `0.0(011)`. A formatação visual trata a notação universal, não mascarando o hardware.
+
+**Pergunta 7: O algoritmo de Multiplicações Sucessivas extrai "o que transbordou" para a parte inteira (o overflow). Como o script converte esse overflow da origem para a base de destino final?**
+> Quando o vetor fracionário é multiplicado pela Base Destino (usando o sistema operando na Base Origem), a multiplicação aumenta a string; por exemplo, `['3', '5']` de duas posições pode virar `['1', '3', '0']` com três. Isolamos os $N$ números excedentes à esquerda (`['1']`), convertemos esse sub-vetor minúsculo via função controlada (porque sabemos que o overflow é, no máximo, restrito ao limite de `36` — não uma magnitude global) e buscamos a chave correta dele na classe `CharMapper`. O símbolo vira a próxima casa do vetor fracionário final.
+
+**Pergunta 8: Por que a refatoração extraindo as matemáticas num módulo `VectorMath` foi necessária hoje, no Dia 3?**
+> Devido ao princípio DRY de Engenharia de Software (Don't Repeat Yourself). Os métodos `_vector_add` e `_vector_mul` criados no Dia 2 possuíam uma complexidade considerável de varredura (da direita para esquerda carregando carry de soma com a ALU). Como percebemos que o `FractionalConverter` utilizaria exatamente a mesma estrutura (só que acionando a ALU da Base de Origem ao invés da Destino), seria péssima prática copiar e colar o código de vetor. O encapsulamento limpo permitiu que instanciássemos o `VectorMath(ALU_Orig)` ou `VectorMath(ALU_Dest)` conforme o desejo algébrico.
+
+**Pergunta 9: Ao "normalizar" o estado removendo zeros à direita (função `_normalize_frac_state`), qual perigo estávamos evadindo no histórico?**
+> Se no passo 1 a sobra foi a representação `['5', '0']`, ela tem o mesmo valor matemático absoluto fracionário que `['5']`. Se não expurgássemos o zero fantasma à direita, o Dicionário de História Python trataria `"50"` e `"5"` como duas chaves (Hashes) completamente diferentes. Isso arruinaria o laço da dízima periódica, transformando um ciclo simples num falso loop finito ou numa interrupção baseada em `max_precision`. A normalização garante que frações aritmeticamente idênticas emitam sempre a mesma assinatura no dicionário.
+
+**Pergunta 10: Ao dizer que as partes se unem de "Forma Integrada", a que vocês se referem no contexto de Produto Final?**
+> O usuário (ou outro módulo Python, ou uma CLI no Dia 6) jamais precisa tocar no construtor de Horner ou no loop de Histórico e de Multiplicações Sucessivas. Para o sistema, o comando `DirectConverter().convert_real("1.33", 10, 2)` é o único ponto de contato existente (Padrão Façade). A lógica de desmembramento entre inteiros e frações, separação das ALUs (Origem/Destino) e formatação de Parênteses Finais fica estritamente na caixa-preta. Do ponto de vista de requisito funcional, o programa lida perfeitamente com um conjunto de vetores $x \in \mathbb{R}$ em chamada unificada.
