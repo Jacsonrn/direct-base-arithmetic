@@ -1,22 +1,19 @@
 from base_vector import FloatVector, CharMapper
 from arithmetic_tables import ArithmeticTables
+from vector_math import VectorMath
 
 class DirectOperations:
     """
-    Realiza adição e subtração de números reais (FloatVector)
-    nativamente na base especificada, simulando hardware real.
+    Controlador de alto nível para operações de ponto flutuante com sinais.
+    Delega a aritmética matemática bruta para o VectorMath (Princípio DRY).
     """
     def __init__(self, base: int, mapper: CharMapper = None):
         self.base = base
         self.mapper = mapper or CharMapper()
         self.tables = ArithmeticTables(base, self.mapper)
+        self.math = VectorMath(self.tables)
 
-    def align_vectors(self, vec_a: FloatVector, vec_b: FloatVector) -> tuple[list[str], list[str], int]:
-        """
-        Alinha as vírgulas de dois FloatVectors preenchendo com zeros (zero-padding).
-        Retorna (dígitos_a, dígitos_b, nova_posicao_virgula).
-        """
-        # Parte Inteira (zeros à esquerda)
+    def _align_vectors(self, vec_a: FloatVector, vec_b: FloatVector) -> tuple[list[str], list[str], int]:
         int_a = vec_a.digits[:vec_a.comma_position]
         int_b = vec_b.digits[:vec_b.comma_position]
         max_int = max(len(int_a), len(int_b))
@@ -24,7 +21,6 @@ class DirectOperations:
         int_a_aligned = ['0'] * (max_int - len(int_a)) + int_a
         int_b_aligned = ['0'] * (max_int - len(int_b)) + int_b
         
-        # Parte Fracionária (zeros à direita)
         frac_a = vec_a.digits[vec_a.comma_position:]
         frac_b = vec_b.digits[vec_b.comma_position:]
         max_frac = max(len(frac_a), len(frac_b))
@@ -35,112 +31,118 @@ class DirectOperations:
         aligned_a = int_a_aligned + frac_a_aligned
         aligned_b = int_b_aligned + frac_b_aligned
         
-        return aligned_a, aligned_b, max_int
+        return aligned_a, aligned_b, max_frac
 
-    def is_greater_or_equal_abs(self, a_digits: list[str], b_digits: list[str]) -> bool:
-        """
-        Verifica se o módulo do vetor A é maior ou igual ao módulo do vetor B.
-        Os vetores já devem estar alinhados!
-        """
-        for a, b in zip(a_digits, b_digits):
-            val_a = self.mapper.get_value(a)
-            val_b = self.mapper.get_value(b)
-            if val_a > val_b: return True
-            if val_a < val_b: return False
-        return True # São exatamente iguais
-
-    def _unsigned_add(self, a_digits: list[str], b_digits: list[str], comma_pos: int) -> tuple[list[str], int]:
-        """Soma vetorial sem sinal armada da direita para a esquerda."""
-        result = []
-        carry = '0'
-        for i in range(len(a_digits) - 1, -1, -1):
-            c1, sum1 = self.tables.lookup_add(a_digits[i], b_digits[i])
-            c2, final_sum = self.tables.lookup_add(sum1, carry)
-            
-            # O novo carry nunca transborda o '1' numa soma de dois números
-            _, final_carry = self.tables.lookup_add(c1, c2)
-            
-            result.insert(0, final_sum)
-            carry = final_carry
-            
-        new_comma = comma_pos
-        if carry != '0':
-            result.insert(0, carry)
-            new_comma += 1
-            
-        return result, new_comma
-
-    def _unsigned_sub(self, a_digits: list[str], b_digits: list[str], comma_pos: int) -> tuple[list[str], int]:
-        """
-        Subtração vetorial sem sinal: a - b. 
-        PREMISSA MATEMÁTICA: garante-se que A >= B previamente.
-        """
-        result = []
-        borrow = '0'
+    def _format_result(self, res_dig: list[str], frac_len: int, sign: str) -> FloatVector:
+        comma = len(res_dig) - frac_len
         
-        for i in range(len(a_digits) - 1, -1, -1):
-            # 1. Subtrai B de A
-            b1, sub1 = self.tables.lookup_sub(a_digits[i], b_digits[i])
-            # 2. Subtrai o borrow (que veio da casa anterior)
-            b2, final_sub = self.tables.lookup_sub(sub1, borrow)
+        # Insere zeros à esquerda se a vírgula ficou negativa ou na ponta (ex: .10)
+        while comma <= 0:
+            res_dig.insert(0, '0')
+            comma += 1
             
-            # Acumula o novo borrow. A matemática prova que b1 e b2 nunca são 1 ao mesmo tempo.
-            _, final_borrow = self.tables.lookup_add(b1, b2)
+        # Remove zeros excedentes à esquerda da parte inteira (preservando o 0 antes da vírgula)
+        while comma > 1 and res_dig[0] == '0':
+            res_dig.pop(0)
+            comma -= 1
             
-            result.insert(0, final_sub)
-            borrow = final_borrow
+        # Remove zeros redundantes na parte fracionária
+        while len(res_dig) > comma and res_dig[-1] == '0':
+            res_dig.pop()
             
-        # Remove os zeros fantasmas à esquerda da parte inteira
-        new_comma = comma_pos
-        while new_comma > 1 and result[0] == '0':
-            result.pop(0)
-            new_comma -= 1
-            
-        return result, new_comma
-
-    def _clean_fractional_zeros(self, digits: list[str], comma_pos: int) -> list[str]:
-        """Remove zeros redundantes no final da fração (ex: 10.50 -> 10.5)."""
-        while len(digits) > comma_pos and digits[-1] == '0':
-            digits.pop()
-        return digits
-
-    def add(self, vec_a: FloatVector, vec_b: FloatVector) -> FloatVector:
-        """Operação nativa de Adição: A + B"""
-        if vec_a.base != vec_b.base:
-            raise ValueError("Operandos devem estar na mesma base.")
-            
-        a_dig, b_dig, comma = self.align_vectors(vec_a, vec_b)
         res = FloatVector(self.base)
-        
-        if vec_a.sign == vec_b.sign:
-            # Sinais iguais: soma as magnitudes e preserva o sinal
-            res_dig, res_comma = self._unsigned_add(a_dig, b_dig, comma)
-            res.sign = vec_a.sign
-        else:
-            # Sinais diferentes: cai numa subtração, preservando o sinal do maior
-            if self.is_greater_or_equal_abs(a_dig, b_dig):
-                res_dig, res_comma = self._unsigned_sub(a_dig, b_dig, comma)
-                res.sign = vec_a.sign
-            else:
-                res_dig, res_comma = self._unsigned_sub(b_dig, a_dig, comma)
-                res.sign = vec_b.sign
-                
-        res_dig = self._clean_fractional_zeros(res_dig, res_comma)
         res.digits = res_dig
-        res.comma_position = res_comma
-        
-        # Zero absoluto não tem sinal negativo
-        if all(d == '0' for d in res.digits):
-            res.sign = '+'
-            
+        res.comma_position = comma
+        res.sign = '+' if all(d == '0' for d in res_dig) else sign
         return res
 
+    def add(self, vec_a: FloatVector, vec_b: FloatVector) -> FloatVector:
+        if vec_a.base != vec_b.base: raise ValueError("Operandos devem estar na mesma base.")
+        a_dig, b_dig, frac_len = self._align_vectors(vec_a, vec_b)
+        
+        if vec_a.sign == vec_b.sign:
+            res_dig = self.math.add(a_dig, b_dig)
+            sign = vec_a.sign
+        else:
+            if self.math.is_greater_or_equal(a_dig, b_dig):
+                res_dig = self.math.sub(a_dig, b_dig)
+                sign = vec_a.sign
+            else:
+                res_dig = self.math.sub(b_dig, a_dig)
+                sign = vec_b.sign
+                
+        return self._format_result(res_dig, frac_len, sign)
+
     def sub(self, vec_a: FloatVector, vec_b: FloatVector) -> FloatVector:
-        """Operação nativa de Subtração: A - B"""
-        # A - B é algebricamente equivalente a A + (-B).
-        # Criamos um clone do operando B com o sinal invertido e chamamos a Adição.
         neg_b = FloatVector(self.base, '-' if vec_b.sign == '+' else '+')
         neg_b.digits = vec_b.digits.copy()
         neg_b.comma_position = vec_b.comma_position
-        
         return self.add(vec_a, neg_b)
+
+    def mul(self, vec_a: FloatVector, vec_b: FloatVector) -> FloatVector:
+        if vec_a.base != vec_b.base: raise ValueError("Operandos devem estar na mesma base.")
+        
+        res_dig = self.math.mul(vec_a.digits, vec_b.digits)
+        frac_len = (len(vec_a.digits) - vec_a.comma_position) + (len(vec_b.digits) - vec_b.comma_position)
+        sign = '+' if vec_a.sign == vec_b.sign else '-'
+        
+        return self._format_result(res_dig, frac_len, sign)
+
+    def div(self, vec_a: FloatVector, vec_b: FloatVector, max_precision=10) -> FloatVector:
+        if vec_a.base != vec_b.base: raise ValueError("Operandos devem estar na mesma base.")
+        if all(d == '0' for d in vec_b.digits): raise ZeroDivisionError("Divisão por zero.")
+
+        # Desloca as vírgulas até o divisor ser estritamente inteiro
+        frac_b_len = len(vec_b.digits) - vec_b.comma_position
+        a_dig = vec_a.digits.copy()
+        a_comma = vec_a.comma_position + frac_b_len
+        while a_comma > len(a_dig):
+            a_dig.append('0')
+            
+        b_dig = vec_b.digits.copy()
+        
+        res_dig = []
+        partial_div = []
+        idx_a = 0
+        comma_placed = False
+        res_comma = 0
+        
+        # Executa a divisão vetorial longa (Chave da Divisão)
+        while idx_a < len(a_dig) or (len(partial_div) > 0 and not (len(partial_div)==1 and partial_div[0]=='0') and len(res_dig) - res_comma < max_precision):
+            if idx_a == a_comma:
+                res_comma = len(res_dig)
+                comma_placed = True
+                
+            if idx_a < len(a_dig):
+                partial_div.append(a_dig[idx_a])
+            else:
+                if not comma_placed:
+                    res_comma = len(res_dig)
+                    comma_placed = True
+                partial_div.append('0')
+                
+            # Limpa zeros no início do dividendo parcial para otimizar
+            while len(partial_div) > 1 and partial_div[0] == '0': partial_div.pop(0)
+            
+            best_q = '0'
+            best_prod = ['0']
+            for val_q in range(1, self.base):
+                q_char = self.mapper.get_char(val_q)
+                prod = self.math.mul_digit(b_dig, q_char)
+                if self.math.is_greater_or_equal(partial_div, prod):
+                    best_q = q_char
+                    best_prod = prod
+                else:
+                    break
+                    
+            res_dig.append(best_q)
+            partial_div = self.math.sub(partial_div, best_prod)
+            idx_a += 1
+            
+        if not comma_placed:
+            res_comma = len(res_dig)
+            
+        sign = '+' if vec_a.sign == vec_b.sign else '-'
+        frac_len = len(res_dig) - res_comma
+        
+        return self._format_result(res_dig, frac_len, sign)
