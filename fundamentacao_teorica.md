@@ -590,3 +590,47 @@ Para lidar com a complexidade das 4 operações sem criar classes monolíticas "
 
 **Pergunta 10: Qual o papel principal do `DirectOperations` se agora ele não faz a conta matemática bruta da base?**
 > Ele é o nosso Maestro Operacional (uma implementação clara do Design Pattern *Facade*). Ele esconde do usuário toda a feiura da abstração de listas, servindo como uma interface de alto nível que blinda as leis do ponto flutuante, devolvendo os objetos `FloatVectors` perfeitamente estruturados e polidos ao final de qualquer cálculo.
+
+---
+
+## Dia 06: Integração do Software e Suíte de Testes Comparativos
+
+### 6.1 Arquitetura da Interface Unificada (`main.py`)
+Para consolidar a entrega do software, implementamos o arquivo `main.py` operando como uma Interface de Linha de Comando (CLI) interativa. Esse módulo atua como a camada de visualização (View) e controlador mestre. Ele encapsula a complexidade do sistema instanciando as Facades `DirectConverter` e `DirectOperations` sob demanda, tratando exceções, e recebendo a entrada do usuário de forma amigável e à prova de falhas. Seguindo rigorosamente as restrições, não utilizamos nenhuma biblioteca externa (dependências de terceiros), garantindo execução nativa purista em Python 3.11+.
+
+### 6.2 A Prova do Ruído Digital (IEEE 754)
+O objetivo magno deste projeto era provar que o hardware moderno (limitado à Base 2) injeta ruídos matemáticos irreversíveis em computações genéricas. A Suíte de Testes (`suite_ruido_digital`) demonstra isso através de dois axiomas:
+1. **O Problema de 0.1 + 0.2:** No padrão IEEE 754, a fração decimal $0.1$ não possui representação binária exata (é uma dízima infinita $0.000110011..._2$). Quando o hardware soma $0.1 + 0.2$, o acúmulo das dízimas truncadas gera a infame resposta de erro `0.30000000000000004`. Nosso processador, executando a adição vetorial de forma nativa e simbólica, retorna de forma absoluta e limpa: `0.3`.
+2. **Perda de Ciclagem Infinita:** O hardware lida com $1/3$ truncando-o na 16ª casa decimal (`0.3333333333333333`). Essa aproximação arbitrária destrói a essência cíclica do número; a informação de que ele é infinito se perde para sempre. Na nossa arquitetura abstrata, o *Dicionário de Estados Hash* mapeia a repetição algébrica do resto da divisão e cristaliza a informação na notação `0.(3)`, provando que não perdemos nenhum metadado estrutural.
+
+### 6.3 Dez Possíveis Perguntas do Professor — Dia 06
+
+**Pergunta 1: Por que um arquivo `main.py` separado era necessário?**
+> Para servir como *Entry Point* (Ponto de Entrada) unificado da aplicação, separando as pesadas regras de negócio matemáticas das operações de I/O (Input/Output). O código do núcleo da nossa CPU abstrata se mantém completamente agnóstico de terminal e menus.
+
+**Pergunta 2: O que o teste clássico `0.1 + 0.2` comprova a favor do sistema de vocês?**
+> Comprova que a Aritmética Direta na Base elimina por completo os erros de arredondamento cumulativo introduzidos pela conversão forçada e oculta do hardware à Base 2. Como não usamos pivô, não houve dízima binária corrompendo a soma.
+
+**Pergunta 3: Por que linguagens modernas de mercado ainda utilizam o padrão IEEE 754 se ele gera esse tipo de erro fracionário?**
+> Por uma questão de alta performance (Velocidade). Processar ponto flutuante diretamente no silício nativo da CPU é absurdamente mais rápido do que instanciar Dicionários Hash e percorrer Arrays de string (como nós fizemos). É um sacrifício de exatidão científica em prol de rapidez para aplicações de consumo.
+
+**Pergunta 4: Houve o uso de bibliotecas numéricas externas, como `NumPy` ou a biblioteca `Decimal` nativa do Python?**
+> Absolutamente não. A restrição acadêmica exigia a construção estrutural genuína. Nós desenvolvemos os algoritmos de carry, borrow, dízima e alinhamento de vírgula completamente do zero manipulando matrizes de caracteres crus.
+
+**Pergunta 5: Como a CLI interativa lida com entradas catastróficas, como uma letra alienígena na base ou divisão por zero?**
+> A estrutura utiliza blocos flexíveis de `try/except` no arquivo `main.py` combinados com as rigorosas barreiras de `ValueError` injetadas no construtor do `FloatVector` e os `ZeroDivisionError` da ALU. O software intercepta a violação e emite o erro amigavelmente na interface em vez de abortar subitamente (crash).
+
+**Pergunta 6: O formato final de saída `0.3` do teste vetorial sofreu algum arredondamento na hora de realizar o print na tela?**
+> De forma alguma. O vetor resultante literalmente conteve a string `['3']` na sua parte fracionária porque a aritmética bruta da tabela hash de Adição da Base 10 somou $1 + 2 = 3$ com exatidão perfeita e pontual, sem ruídos para tentar esconder.
+
+**Pergunta 7: Existe o risco da nossa dízima `0.(3)` processar infinitamente e consumir toda a memória (RAM) do sistema na conversão?**
+> Não, pois o ciclo periódico é detectado matematicamente pelo algoritmo de rastreamento. Uma vez mapeada a dízima repetida (através do hash do resto da multiplicação), o processamento cíclico "morre" (aciona um `break`) e a string formatada final é concebida instantaneamente, evadindo com 100% de sucesso um loop infinito perigoso.
+
+**Pergunta 8: A aplicação vetorial construída seria segura em um ambiente Web rodando múltiplas instâncias ao mesmo tempo?**
+> Sim (é estritamente Thread-Safe). Diferente de hardwares físicos que possuem flags de estado em registradores globais, todas as nossas instâncias como `DirectConverter` e a `ArithmeticTables` mantêm os dados confinados no escopo da memória local da classe.
+
+**Pergunta 9: A arquitetura atual suportaria facilmente uma interface gráfica (GUI) no futuro?**
+> Com perfeição. Fomos regidos pelos princípios de Engenharia de Software SOLID e MVC. A camada de modelo (Aritmética) e o controle (Operações) estão independentes. Bastaria plugar os métodos do `DirectConverter` a botões de um framework visual (HTML/React ou Tkinter) sem a necessidade de reescrever uma única linha da máquina de estados matemáticos.
+
+**Pergunta 10: Dentre todo o arcabouço estrutural do escopo 1 ao 6, qual foi a maior barreira de abstração algorítmica transposta?**
+> A estabilização de Vírgulas Flutuantes (*Floating Point*). Conciliar a aritmética de Vetores Brutos (Baixo Nível) com o Alinhamento por Zero-Padding (Alto Nível), garantindo que ao emparelhar $12.5$ com $0.55$ eles se transformassem nativamente em $12.50$ e $00.55$, sem perder o indexador de `comma_position` real e preservando as lógicas de Borrow da subtração.
