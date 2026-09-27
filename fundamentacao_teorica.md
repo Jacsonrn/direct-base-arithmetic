@@ -454,3 +454,81 @@ No projeto U1, o `FractionalConverter` não trabalha com precisão limitada. Ele
 
 **Pergunta 10: Ao dizer que as partes se unem de "Forma Integrada", a que vocês se referem no contexto de Produto Final?**
 > O usuário (ou outro módulo Python, ou uma CLI no Dia 6) jamais precisa tocar no construtor de Horner ou no loop de Histórico e de Multiplicações Sucessivas. Para o sistema, o comando `DirectConverter().convert_real("1.33", 10, 2)` é o único ponto de contato existente (Padrão Façade). A lógica de desmembramento entre inteiros e frações, separação das ALUs (Origem/Destino) e formatação de Parênteses Finais fica estritamente na caixa-preta. Do ponto de vista de requisito funcional, o programa lida perfeitamente com um conjunto de vetores $x \in \mathbb{R}$ em chamada unificada.
+
+---
+
+## Dia 04: Operações Elementares Diretas — Adição e Subtração
+
+### 4.1 A Extensão da ALU: O Controle de Borrow (Empréstimo)
+
+Até o Dia 3, a nossa Unidade Lógica e Aritmética Simulada (ALU) no arquivo `arithmetic_tables.py` calculava prévia e estaticamente o carry de Adição e de Multiplicação. No Dia 4, adicionamos as tabelas de consulta ($O(1)$) para **Subtração**, com o crucial controle de **Borrow** (o "pede-emprestado").
+
+A lógica matemática de pré-computação da tabela de subtração é:
+- Para cada par de dígitos válidos $(a, b)$ na Base $B$:
+  - Se $a \ge b$, o resultado é $a - b$ e o **borrow** gerado para a casa anterior é $0$.
+  - Se $a < b$, nós não geramos um dígito negativo (o que seria uma violação no registrador abstrato). Nós pegamos $B$ emprestado da próxima casa à esquerda. Logo, o resultado é $(a + B) - b$ e o **borrow** gerado para a casa anterior é $1$.
+
+### 4.2 Alinhamento em Ponto Flutuante
+
+Para que os operandos vetoriais (`FloatVector`) operem sem colapso, implementamos no módulo `DirectOperations` o método `align_vectors`. 
+A regra básica de operações elementares, aplicável a todas as bases de 2 a 36, é **Vírgula embaixo de vírgula**.
+- Os zeros à **esquerda da parte inteira** (zero-padding) não alteram o valor numérico.
+- Os zeros à **direita da parte fracionária** (zero-padding) não alteram o valor numérico.
+Assim, $12.5 + 1.25$ se converte no vetor alinhado $12.50 + 01.25$. A posição da vírgula `comma_position` em ambos os operandos passa a ser idêntica, permitindo que o algoritmo itere dígito a dígito de forma estritamente mecânica e linear, varrendo do último caractere fracionário até o primeiro caractere inteiro.
+
+### 4.3 A Adição e Subtração Universais sem Intervenção Decimal
+
+As operações (denominadas `_unsigned_add` e `_unsigned_sub`) não convertem os blocos de algarismos em valores decimais. Se o sistema está processando Hexadecimal e encontra a coluna `A` e `1`, ele envia o par de caracteres `('A', '1')` à tabela hash, que imediatamente retorna o caractere `'B'`. Não existe matemática de tempo de execução, preservando assim a pureza da **Aritmética Direta na Base**, como exigido pelo edital do projeto.
+
+No caso da **Subtração Vetorial**, o algoritmo exige que a parcela de cima seja, no mínimo, do mesmo tamanho da de baixo ($A \ge B$). 
+Para cada casa de índice $i$:
+1. Subtraímos o dígito de baixo pelo de cima, guardando o empréstimo originário $b_1$.
+2. Imediatamente subtraímos a casa resultante pelo **borrow que havia sido transportado** da iteração passada, guardando um potencial empréstimo residual $b_2$.
+3. O novo borrow que será mandado para a esquerda é a soma de $b_1 + b_2$. (Nossa teoria assegurou matematicamente que $b_1$ e $b_2$ nunca podem ser igual a 1 simultaneamente).
+
+### 4.4 Roteamento de Sinais: Replicando Regras Aritméticas
+
+No mundo real (e computacional), a adição entre dois números negativos é na verdade uma subtração de suas magnitudes, com conservação de sinais.
+O orquestrador público exposto pelo módulo `DirectOperations`:
+1. Identifica se a chamada à API é de `add()` (Soma) ou `sub()` (Subtração).
+2. Converte todas as subtrações em adições de sinais invertidos: $A - B \rightarrow A + (-B)$.
+3. Efetua a checagem absoluta (módulo) usando o método `is_greater_or_equal_abs`.
+4. Roteia a execução:
+   - Se os sinais forem iguais: aciona a soma simples (`_unsigned_add`) e mantém o sinal comum.
+   - Se os sinais diferem: aciona a subtração armada (`_unsigned_sub`), colocando no topo a maior magnitude, e herdando o sinal do vetor absoluto superior.
+
+Esse controle de fluxo é a **chave** que permite processar Reais negativos perfeitamente.
+
+---
+
+### 4.5 Dez Possíveis Perguntas do Professor — Dia 04
+
+**Pergunta 1: Como o seu algoritmo lida com a soma de $10.1_2$ e $1.1_2$ se eles têm tamanhos diferentes?**
+> Através do algoritmo de alinhamento em ponto flutuante na classe `DirectOperations`. Como a nossa estrutura `FloatVector` isola conceitualmente a parte inteira da fracionária pela `comma_position`, nós injetamos zeros à esquerda da parte inteira do número menor e zeros à direita da parte fracionária, se necessário. O alinhamento formaria $10.1$ e $01.1$.
+
+**Pergunta 2: Se eu inserir os caracteres Hexadecimais `'A'` e `'B'` na subtração sem envolver as bibliotecas `int` do Python, como o computador saberá que `'B'` (11) menos `'A'` (10) resulta em 1?**
+> Pela arquitetura de **Look-Up Table** (Tabela de Consulta Hash) desenvolvida no Dia 2 e expandida no Dia 4. No momento da instância do código para Hexadecimal, geramos uma matriz estática que aponta a chave hash `('B', 'A')` diretamente à tupla de retorno `(borrow='0', resultado='1')`. Nós nunca fazemos o CPU calcular $11 - 10$ no meio da soma; nós acessamos a memória em $O(1)$.
+
+**Pergunta 3: O que vocês fazem se o usuário pede para calcular $3 - 8$ (ou seja, quando $A < B$)? A subtração vetorial de vocês permite gerar dígitos negativos?**
+> Não. O registrador abstrato foi programado para jamais emitir um caractere `-` isolado no meio do vetor. O método `_unsigned_sub` obriga que a magnitude de $A \ge B$. O orquestrador superior lida com a solicitação calculando $|8| - |3|$, que gera a saída `5`, e depois anexa cirurgicamente o sinal de quem tinha a maior magnitude absoluta, resultando em `-5`.
+
+**Pergunta 4: O algoritmo permite base decimal (10) como ponte para o carry ou o borrow na subtração armada?**
+> Absolutamente não. Essa é a restrição mais importante do Dia 4. O nosso borrow funciona inteiramente a partir das tabelas nativas de cada base. Se estivermos na Base 2, um empréstimo (borrow) vale exatamente $2$. Nós nunca transformamos as strings do vetor para `int` em Python para fazer uma matemática decimal oculta.
+
+**Pergunta 5: Mostre-me onde está o risco matemático caso um borrow tente pedir empréstimo no mesmo momento em que a subtração inicial também precisa de um.**
+> Isso é matematicamente impossível. Se subtrairmos a coluna de cima pela coluna de baixo ($b_1$) e isso gerar borrow, é porque $A < B$. Isso significa que o resultado temporário já incorporou o bônus da base e se tornou largo o suficiente de forma que subtrair um único $-1$ adicional de borrow na cascata ($b_2$) não necessitará pedir outro à esquerda. Logo, $b_1$ e $b_2$ nunca podem estourar somados.
+
+**Pergunta 6: Na subtração armada, qual é o critério de parada da propagação de zeros? (Ex: o falso $04.5 - 04.5 = 00.0$)**
+> A função `_unsigned_sub` e a função de roteamento geral executam a sanitização através de blocos `while`. Na parte inteira, todos os zeros excedentes à esquerda são descartados através de cortes (pops) na lista, até atingirmos um limite que pare perto da vírgula (evitando apagar o `.0` no final absoluto). A regra `is_greater_or_equal_abs` é quem nos previne que um vetor acabe com $000$ fantasmas poluindo a visualização limpa de string.
+
+**Pergunta 7: Em um empréstimo (borrow) muito estendido (ex: $1000_{16} - 1_{16}$), como a sua string reage à travessia por múltiplos zeros?**
+> De maneira mecânica e natural. A cada zero processado, $0_{16} - 0_{16} - \text{borrow\_anterior} (1)$ dispara a tabela que sabe que $0 - 1 = \text{resultado } F$, e exige borrow de 1 para o colega seguinte à esquerda. O algoritmo é um loop rígido que não "enxerga" o final: ele só para quando a varredura atinge o índice $0$ da string alinhada, o que consome perfeitamente o $1 - 1 = 0$ na extrema esquerda.
+
+**Pergunta 8: No momento em que você injeta os zeros de alinhamento (`zero-padding`), você não perde o verdadeiro `comma_position` das Strings originais?**
+> Nós preservamos perfeitamente e garantimos que a saída também ganhe a formatação original. Como nós anexamos $N$ zeros para preencher a lacuna máxima (`max_int - len(int_a)`), a nova posição de vírgula passa a ser exatamente o tamanho desse novo bloco inteiro máximo. Ambos os FloatVectors virtuais (A e B) terão uma `comma_position` unânime para o loop iterar de forma sincronizada.
+
+**Pergunta 9: O que acontece caso as matrizes de adição e de subtração lidem com dois `FloatVectors` em bases divergentes (Ex: somar um número Binário com um Octal)?**
+> O módulo possui validação rígida de fronteira na primeira linha da operação `add(A, B)`. Se a propriedade `base` do operando $A$ for incompatível com a do operando $B$, nós levantamos um `ValueError`. Operações vetoriais armadas diretas são axiomáticas da mesma base. Para somá-los, o usuário deve primeiro engatilhar a API do `DirectConverter` (Dia 2 e 3) para equiparar as bases.
+
+**Pergunta 10: Ao dizer que resolvemos $A - B$ invertendo o sinal de $B$ e chamando a Adição, que Padrão de Engenharia de Software foi respeitado?**
+> Reuso de Código de Alto Nível (DRY) e Abstração Algébrica. Na matemática, a subtração genuína não passa de uma adição perante um inverso aditivo. Nossa API não precisa se desdobrar criando duas lógicas para controle de sinais (uma de soma, uma de subtração). Encapsulando tudo perante uma porta de entrada global, se o dev pedir "Diminua 5 de 10", nós clonamos a variável do 5, transformamos em -5, e entregamos para o módulo de soma lidar com $10 + (-5)$. O roteador cuida do resto de forma muito elegante.
