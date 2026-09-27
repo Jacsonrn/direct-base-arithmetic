@@ -1,0 +1,96 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{booktabs}
+\geometry{a4paper, margin=2cm}
+
+\title{
+\vspace{-2em}
+\textbf{Processador Aritmético Vetorial: Conversão Direta e Eliminação de Ruído Digital em Bases Arbitrárias}
+\vspace{0.5em} \\
+\large Trabalho da Unidade I}
+\author{
+\textbf{Disciplina de Computação Numérica}\\
+\vspace{0.5em} \\ 
+Jacson \\
+}
+\date{Setembro de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este trabalho apresenta a fundamentação teórica e a implementação de um processador aritmético abstrato projetado para realizar conversões e operações elementares em qualquer sistema de numeração posicional (Bases 2 a 36). Diferente da arquitetura tradicional de hardware que utiliza a base binária como pivô intermediário, o sistema computa vetores de caracteres simbólicos diretamente nas bases de origem e destino. A metodologia engloba a avaliação polinomial de Horner para a parte inteira e multiplicações sucessivas para a parte fracionária, suportadas por uma Unidade Lógica e Aritmética (ALU) baseada em tabelas \textit{hash}. Os resultados demonstram a eliminação absoluta de erros de truncamento e ruídos digitais inerentes ao padrão IEEE 754, preservando dízimas periódicas nativas e assegurando exatidão matemática irrestrita.
+\end{abstract}
+
+\section{Introdução}
+O processamento numérico contemporâneo delega as operações matemáticas diretamente aos registradores físicos da Unidade Central de Processamento (CPU), que operam estritamente sob o sistema binário (Base 2). Quando softwares em linguagens de alto nível instanciam variáveis reais (\textit{floating-point}), eles estão, na prática, submetendo-se ao padrão normativo \textbf{IEEE 754}.
+
+Embora altamente eficiente em termos de velocidade, a coerção binária do IEEE 754 introduz falhas críticas de precisão científica. Frações simples e exatas na Base 10, como $0.1$ e $0.2$, transformam-se em dízimas infinitas na Base 2 ($0.000110011\dots_2$). Devido à limitação física de alocação de bits (normalmente 64 bits para precisão dupla), o hardware é forçado a truncar o número. Ao ser convertido de volta para o ecossistema decimal, o resíduo do truncamento aflora na forma de um erro cumulativo, gerando anomalias aritméticas (ruído digital).
+
+Para mitigar essa imprecisão em cenários onde a integridade da conversão é primordial, este trabalho desenvolveu uma arquitetura capaz de processar as quatro operações matemáticas elementares (adição, subtração, multiplicação e divisão vetorial longa) sem a intermediação de uma base pivô. Todo o cômputo é feito diretamente de forma abstrata.
+
+\section{Arquitetura e Metodologia}
+
+\subsection{Vetores Simbólicos e ALU em $O(1)$}
+Em detrimento de variáveis primitivas numéricas (\texttt{int} e \texttt{float}), os números foram mapeados como vetores contínuos de caracteres de tamanho arbitrário (\texttt{FloatVector}), onde um metadado interno (\texttt{comma\_position}) simula o comportamento de um ponteiro \textit{Radix} flutuante.
+
+A aritmética sobre estes vetores ocorre através de uma Unidade Lógica e Aritmética Simulada (ALU). A ALU não executa processamento lógico binário em tempo real; ela inicializa matrizes estáticas (Tabelas Hash do Python) mapeando todos os resultados e transportes (\textit{carry} e \textit{borrow}) possíveis na base selecionada. Assim, a busca por uma soma como $\text{A} + 1$ na Base 16 possui complexidade assintótica $O(1)$.
+
+\subsection{A Simetria Direta: Inteiros e Frações}
+O conversor isola a parte inteira da fracionária respeitando a natureza matemática de cada expoente posicional:
+\begin{itemize}
+    \item \textbf{Parte Inteira:} Utiliza o \textbf{Método de Avaliação Polinomial de Horner}. Contudo, o algoritmo é processado alimentando as matrizes da ALU da \textit{Base de Destino}. O método reduz drasticamente a complexidade ao erradicar a exponenciação explícita.
+    \item \textbf{Parte Fracionária:} Exige a técnica de \textbf{Multiplicações Sucessivas}, que opera de forma matematicamente espelhada alimentando as matrizes da ALU da \textit{Base de Origem}, transbordando o excesso inteiro a cada laço.
+\end{itemize}
+
+\subsection{Dicionário de Estados para Dízimas Periódicas}
+Visando combater a degeneração artificial do hardware ao lidar com frações irracionais, a aplicação rastreia as operações fracionárias salvando o valor de cada resto (\textit{remainder}) num Dicionário de Estados, associado ao índice iterativo. Quando uma colisão estrutural ocorre (um resto repete um \textit{hash} anterior), o sistema paralisa a operação antes do exaurimento de memória e consolida a repetição através da notação matemática periódica oficial, ex: $0.(3)$.
+
+\section{Resultados Experimentais e Avaliação Crítica}
+
+A interface de linha de comando integrada foi submetida à Suíte de Testes de Ruído Digital. Para aferir a solidez do método, a arquitetura foi posta contra a matemática nativa do processador (interpretador Python nativo CPython).
+
+\subsection{Teste Comparativo: O Erro Acumulado IEEE 754}
+A Tabela 1 ilustra a clássica anomalia da computação binária moderna na simples adição escalar de grandezas centesimais.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Operação Analítica} & \textbf{Hardware Tradicional (Float64)} & \textbf{Arquitetura Vetorial Abstrata} \\ \midrule
+$0.1_{10} + 0.2_{10}$ & \texttt{0.30000000000000004} & \texttt{0.3} \\
+$1/3$ (Conv. para Base 10) & \texttt{0.3333333333333333} & \texttt{0.(3)} \\ \bottomrule
+\end{tabular}
+\caption{Comparativo de Precisão e Representação entre Hardware e Software Abstrato.}
+\label{tab:comparativo}
+\end{table}
+
+A arquitetura desenvolvida garantiu integridade absoluta. Por não realizar coerção em Base 2 em nenhum estágio, o sistema somou os vetores de caracteres consultando puramente as regras da Base 10, imune aos \textit{bits} perdidos. De forma paralela, a repetição matemática fracionária (dízima) foi encapsulada, evitando perda do ciclo estrutural.
+
+\subsection{Avaliação Crítica (Trade-off: Exatidão vs. Desempenho)}
+Apesar do triunfo empírico na eliminação de ruídos e estornos de precisão, o projeto atesta o porquê da computação comercial preterir esta metodologia abstrata: o \textbf{custo de máquina}.
+
+Em hardware físico, portas lógicas lidando com transistores de voltagem binária processam bilhões de operações de \textit{ponto flutuante} por segundo (FLOPs). Ao migrarmos a carga computacional para a Memória Dinâmica via leitura algorítmica de dicionários hash e alinhamentos matriciais de \textit{zero-padding}, cada ciclo de clock se transforma em centenas de instruções da linguagem de alto nível. Para aplicações que dependem de escalabilidade temporal em milissegundos (renderização 3D, simulações físicas pesadas e motores de IA generativa), o erro na 16ª casa decimal do IEEE 754 é um sacrifício compulsório tolerado em prol de desempenho absoluto.
+
+\section{Conclusão}
+O software desenvolvido cumpriu todos os requisitos da disciplina ao implementar de forma limpa, baseada em Padrões de Projeto (\textit{MVC, Facade, SRP}) e sem ferramentas proprietárias numéricas, a matemática arbitrária posicional nativa. O motor vetorial prova que a imprecisão decimal computacional não é uma lacuna da matemática fundamental, mas sim uma distorção do limite material do silício contemporâneo, inteiramente mitigável através de modelagem algorítmica purista.
+
+\section{Repositório de Código}
+Todo o código-fonte (Python 3.11+), a interface interativa CLI e os módulos orientados a objetos da Unidade Lógica e Aritmética desenvolvidos para a aprovação neste Entregável encontram-se disponíveis no repositório:
+\begin{itemize}
+    \item \url{https://github.com/Jacsonrn/direct-base-arithmetic}
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{ieee754} IEEE Computer Society. "IEEE Standard for Floating-Point Arithmetic." \textit{IEEE Std 754-2019}.
+\bibitem{knuth1997} Knuth, D. E. \textit{The Art of Computer Programming, Volume 2: Seminumerical Algorithms}. 3ª Edição. Addison-Wesley, 1997.
+\end{thebibliography}
+
+\end{document}
